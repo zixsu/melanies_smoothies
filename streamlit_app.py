@@ -1,61 +1,77 @@
+# streamlit_app.py
+
 import streamlit as st
 import requests
+from snowflake.snowpark import Session
 from snowflake.snowpark.functions import col
+import json
 
-# Title
-st.title("🍺 Customize Your Smoothie! 🥤")
+# Title & Intro
+st.title("🍓 Customize Your Smoothie! 🥤")
 st.write("Choose the fruits you want in your custom Smoothie!")
 
 # Name input
 name_on_order = st.text_input("Your name for the order:")
 if name_on_order:
-    st.write("The smoothie is ordered by:", name_on_order)
+    st.write("Smoothie will be prepared for:", name_on_order)
+
+# Load session configuration from Streamlit secrets
+@st.cache_resource
+def create_session():
+    connection_parameters = {
+        "account": st.secrets["snowflake"]["account"],
+        "user": st.secrets["snowflake"]["user"],
+        "password": st.secrets["snowflake"]["password"],
+        "role": st.secrets["snowflake"]["role"],
+        "warehouse": st.secrets["snowflake"]["warehouse"],
+        "database": st.secrets["snowflake"]["database"],
+        "schema": st.secrets["snowflake"]["schema"]
+    }
+    return Session.builder.configs(connection_parameters).create()
 
 try:
-    # ✅ Connect to Snowflake using Streamlit Secrets
-    cnx = st.connection("snowflake", type="snowflake")
-    session = cnx.session()
+    session = create_session()
 
-    # Get fruit options
+    # Load fruit names
     fruit_df = session.table("smoothies.public.fruit_options").select(col("FRUIT_NAME")).to_pandas()
     fruit_names = fruit_df["FRUIT_NAME"].tolist()
 
-    # Show fruit table (optional)
-    st.dataframe(fruit_df, use_container_width=True)
+    # Select fruits
+    selected_fruits = st.multiselect(
+        "Choose up to 5 ingredients:",
+        fruit_names,
+        max_selections=5
+    )
 
-    # User selection
-    ind = st.multiselect("Choose up to 5 ingredients:", fruit_names, max_selections=5)
-
-    # Fruityvice API info
-    if ind:
-        st.subheader("🔍 Nutritional Info")
-        for fruit in ind:
+    # Display info from Fruityvice for each selected fruit
+    if selected_fruits:
+        for fruit in selected_fruits:
             try:
-                formatted_name = fruit.lower().replace(" ", "-")
-                url = f"https://fruityvice.com/api/fruit/{formatted_name}"
-                response = requests.get(url)
+                response = requests.get(f"https://fruityvice.com/api/fruit/{fruit}")
                 response.raise_for_status()
-                st.write(f"**{fruit}**")
-                st.json(response.json())
-            except requests.exceptions.RequestException:
-                st.warning(f"Could not load data for {fruit}")
+                fruit_data = response.json()
+                st.write(f"**Nutritional info for {fruit.capitalize()}:**")
+                st.json(fruit_data)
+            except requests.exceptions.RequestException as e:
+                st.warning(f"Could not load data for {fruit}: {str(e)}")
 
-    # Submit button
+    # Button to submit order
     if st.button("Blend My Smoothie!"):
-        if ind and name_on_order:
-            ingredients_string = ', '.join(ind)
-            insert_sql = f"""
+        if selected_fruits and name_on_order:
+            ingredients_string = ', '.join(selected_fruits)
+            insert_stmt = f"""
                 INSERT INTO smoothies.public.orders (ingredients, name_on_order)
                 VALUES ('{ingredients_string}', '{name_on_order}')
             """
-            session.sql(insert_sql).collect()
+            session.sql(insert_stmt).collect()
             st.success(f"Smoothie for **{name_on_order}** is ordered! ✅")
         elif not name_on_order:
             st.info("Please enter your name before submitting.")
-        elif not ind:
-            st.info("Please select at least one fruit.")
+        elif not selected_fruits:
+            st.info("Please select at least one fruit to create your smoothie.")
 
 except Exception as e:
-    st.error(f"An error occurred: {e}")
+    st.error(f"An error occurred: {str(e)}")
 
+# GitHub link
 st.write("Check out the repo: [GitHub](https://github.com/appuv)")
