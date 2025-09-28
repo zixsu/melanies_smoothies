@@ -1,60 +1,70 @@
 import streamlit as st
 import requests
 from snowflake.snowpark.context import get_active_session
-from snowflake.snowpark.functions import col
 
-# App title & instructions
+# App Title
 st.title("🍺 Customize Your Smoothie! 🥤")
 st.write("Choose the fruits you want in your custom Smoothie!")
 
-# Name input
+# Get name on order
 name_on_order = st.text_input("Your name for the order:")
 if name_on_order:
     st.write("The smoothie is ordered by:", name_on_order)
 
 try:
-    # Get Snowflake session (requires st.secrets configured)
+    # Get Snowflake session from st.secrets (already configured)
     session = get_active_session()
 
-    # Load fruit names from Snowflake
-    fruit_df = session.table("smoothies.public.fruit_options").select(col("FRUIT_NAME")).to_pandas()
-    fruit_names = fruit_df["FRUIT_NAME"].tolist()
+    # Load fruit options from Snowflake table
+    fruit_df = session.table("smoothies.public.fruit_options").to_pandas()
+    fruit_names = fruit_df['FRUIT_NAME'].tolist()
 
-    # Fruit selection
-    selected_fruits = st.multiselect("Choose up to 5 ingredients:", fruit_names, max_selections=5)
+    # Show fruit options table (optional)
+    st.dataframe(fruit_df, use_container_width=True)
 
-    # Show nutritional info from Fruityvice API
-    if selected_fruits:
+    # Multiselect input
+    ind = st.multiselect(
+        'Choose up to 5 ingredients:',
+        fruit_names,
+        max_selections=5
+    )
+
+    # Show fruityvice nutritional info for selected fruits
+    if ind:
         st.subheader("🔍 Nutritional Info")
-        for fruit in selected_fruits:
+        for fruit in ind:
             try:
-                # Format fruit name to match API (lowercase, hyphens for spaces)
+                # Format name for API (lowercase and replace spaces with hyphens)
                 formatted_name = fruit.lower().replace(" ", "-")
                 url = f"https://fruityvice.com/api/fruit/{formatted_name}"
                 response = requests.get(url)
                 response.raise_for_status()
                 data = response.json()
-                st.write(f"**{fruit.capitalize()}**")
+                st.write(f"**{fruit}**")
                 st.json(data)
             except requests.exceptions.RequestException:
-                st.warning(f"Could not load data for {fruit} (not found in Fruityvice API)")
+                st.warning(f"Could not load data for {fruit}")
 
-    # Order button
+    # Button to place the smoothie order
     if st.button("Blend My Smoothie!"):
-        if selected_fruits and name_on_order:
-            ingredients_string = ", ".join(selected_fruits)
+        if ind and name_on_order:
+            ingredients_string = ', '.join(ind)
+
+            # Insert SQL
             insert_sql = f"""
                 INSERT INTO smoothies.public.orders (ingredients, name_on_order)
                 VALUES ('{ingredients_string}', '{name_on_order}')
             """
             session.sql(insert_sql).collect()
             st.success(f"Smoothie for **{name_on_order}** is ordered! ✅")
+
+        elif not ind:
+            st.info("Please select at least one ingredient!")
         elif not name_on_order:
-            st.info("Please enter your name before submitting.")
-        elif not selected_fruits:
-            st.info("Please select at least one fruit.")
+            st.info("Please enter a name for the order before submitting!")
 
 except Exception as e:
     st.error(f"An error occurred: {e}")
 
+# GitHub link (optional)
 st.write("Check out the repo: [GitHub](https://github.com/appuv)")
