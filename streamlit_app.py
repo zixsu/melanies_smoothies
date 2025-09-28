@@ -12,21 +12,21 @@ if name_on_order:
     st.write("The smoothie is ordered by:", name_on_order)
 
 try:
-    # ✅ Get Snowflake session from Streamlit connection
-    cnx = st.connection("snowflake")
+    # ✅ Connect to Snowflake using Streamlit Secrets
+    cnx = st.connection("snowflake", type="snowflake")
     session = cnx.session()
 
-    # Load fruit options
+    # Get fruit options
     fruit_df = session.table("smoothies.public.fruit_options").select(col("FRUIT_NAME")).to_pandas()
     fruit_names = fruit_df["FRUIT_NAME"].tolist()
 
-    # Show all available fruits
+    # Show fruit table (optional)
     st.dataframe(fruit_df, use_container_width=True)
 
-    # Let user select fruits
+    # User selection
     ind = st.multiselect("Choose up to 5 ingredients:", fruit_names, max_selections=5)
 
-    # Show nutrition info from Fruityvice
+    # Fruityvice API info
     if ind:
         st.subheader("🔍 Nutritional Info")
         for fruit in ind:
@@ -40,10 +40,10 @@ try:
             except requests.exceptions.RequestException:
                 st.warning(f"Could not load data for {fruit}")
 
-    # Button to submit smoothie order
+    # Submit button
     if st.button("Blend My Smoothie!"):
         if ind and name_on_order:
-            ingredients_string = ", ".join(ind)
+            ingredients_string = ', '.join(ind)
             insert_sql = f"""
                 INSERT INTO smoothies.public.orders (ingredients, name_on_order)
                 VALUES ('{ingredients_string}', '{name_on_order}')
