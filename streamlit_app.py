@@ -7,7 +7,10 @@ from snowflake.snowpark.session import Session
 st.title("🍺 Customize Your Smoothie! 🥤")
 st.write("Choose the fruits you want in your custom Smoothie!")
 
-# Get name on order
+# ✅ Display API response from SmoothieFroot
+smoothiefroot_response = requests.get("https://my.smoothiefroot.com/api/fruit/watermelon")
+st.text(smoothiefroot_response)
+
 name_on_order = st.text_input("Your name for the order:")
 if name_on_order:
     st.write("The smoothie is ordered by:", name_on_order)
