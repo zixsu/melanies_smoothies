@@ -9,7 +9,7 @@ st.write("Choose the fruits you want in your custom Smoothie!")
 
 # ✅ Display API response from SmoothieFroot
 smoothiefroot_response = requests.get("https://my.smoothiefroot.com/api/fruit/watermelon")
-st.text(smoothiefroot_response)
+st.text(smoothiefroot_response.json())
 
 name_on_order = st.text_input("Your name for the order:")
 if name_on_order:
