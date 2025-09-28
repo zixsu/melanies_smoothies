@@ -1,64 +1,77 @@
-# Import Python packages
+# streamlit_app.py
+
 import streamlit as st
 import requests
+from snowflake.snowpark import Session
 from snowflake.snowpark.functions import col
+import json
 
-# Write directly to the app
-st.title("Customize Your Smoothie :cup_with_straw:")
-st.write(
-    """
-    Choose the fruits you want in your custom Smoothie!
-    """
-)
+# Title & Intro
+st.title("🍓 Customize Your Smoothie! 🥤")
+st.write("Choose the fruits you want in your custom Smoothie!")
 
-# User input for name on order
-name_on_order = st.text_input("Name on Smoothie")
-st.write("The name on your smoothie will be: ", name_on_order)
+# Name input
+name_on_order = st.text_input("Your name for the order:")
+if name_on_order:
+    st.write("Smoothie will be prepared for:", name_on_order)
+
+# Load session configuration from Streamlit secrets
+@st.cache_resource
+def create_session():
+    connection_parameters = {
+        "account": st.secrets["snowflake"]["account"],
+        "user": st.secrets["snowflake"]["user"],
+        "password": st.secrets["snowflake"]["password"],
+        "role": st.secrets["snowflake"]["role"],
+        "warehouse": st.secrets["snowflake"]["warehouse"],
+        "database": st.secrets["snowflake"]["database"],
+        "schema": st.secrets["snowflake"]["schema"]
+    }
+    return Session.builder.configs(connection_parameters).create()
 
 try:
-    # Establish connection to Snowflake (assuming st.connection is correctly defined)
-    cnx = st.connection("snowflake")
-    session = cnx.session()
+    session = create_session()
 
-    # Retrieve fruit options from Snowflake
-    my_dataframe = session.table("smoothies.public.fruit_options").select(col("FRUIT_NAME"))
+    # Load fruit names
+    fruit_df = session.table("smoothies.public.fruit_options").select(col("FRUIT_NAME")).to_pandas()
+    fruit_names = fruit_df["FRUIT_NAME"].tolist()
 
-    # Multi-select for choosing ingredients
-    ingredients_list = st.multiselect('Choose up to 5 ingredients:', my_dataframe, max_selections=5)
+    # Select fruits
+    selected_fruits = st.multiselect(
+        "Choose up to 5 ingredients:",
+        fruit_names,
+        max_selections=5
+    )
 
-    # Process ingredients selection
-    if ingredients_list:
-        ingredients_string = ' '.join(ingredients_list)  # Join selected ingredients into a single string
-        for fruit_chosen in ingredients_list:
+    # Display info from Fruityvice for each selected fruit
+    if selected_fruits:
+        for fruit in selected_fruits:
             try:
-                # Make API request to get details about each fruit
-                fruityvice_response = requests.get("https://fruityvice.com/api/fruit/" + fruit_chosen)
-                fruityvice_response.raise_for_status()  # Raise an error for bad responses (4xx or 5xx)
-                
-                if fruityvice_response.status_code == 200:
-                    fv_df = st.dataframe(data=fruityvice_response.json(), use_container_width=True)
-                else:
-                    st.warning(f"Failed to fetch details for {fruit_chosen}")
-            
+                response = requests.get(f"https://fruityvice.com/api/fruit/{fruit}")
+                response.raise_for_status()
+                fruit_data = response.json()
+                st.write(f"**Nutritional info for {fruit.capitalize()}:**")
+                st.json(fruit_data)
             except requests.exceptions.RequestException as e:
-                st.error(f"Failed to fetch details for {fruit_chosen}: {str(e)}")
+                st.warning(f"Could not load data for {fruit}: {str(e)}")
 
-        # SQL statement to insert order into database (assuming proper handling of SQL injection risk)
-        my_insert_stmt = """INSERT INTO smoothies.public.orders(ingredients, name_on_order)
-                            VALUES ('{}', '{}')""".format(ingredients_string, name_on_order)
+    # Button to submit order
+    if st.button("Blend My Smoothie!"):
+        if selected_fruits and name_on_order:
+            ingredients_string = ', '.join(selected_fruits)
+            insert_stmt = f"""
+                INSERT INTO smoothies.public.orders (ingredients, name_on_order)
+                VALUES ('{ingredients_string}', '{name_on_order}')
+            """
+            session.sql(insert_stmt).collect()
+            st.success(f"Smoothie for **{name_on_order}** is ordered! ✅")
+        elif not name_on_order:
+            st.info("Please enter your name before submitting.")
+        elif not selected_fruits:
+            st.info("Please select at least one fruit to create your smoothie.")
 
-        # Button to submit order
-        time_to_insert = st.button('Submit Order')
-        if time_to_insert:
-            try:
-                # Execute SQL insert statement
-                session.sql(my_insert_stmt).collect()
-                st.success('Your Smoothie is ordered, ' + name_on_order + '!', icon="✅")
-            except Exception as e:
-                st.error(f"Failed to submit order: {str(e)}")
+except Exception as e:
+    st.error(f"An error occurred: {str(e)}")
 
-except Exception as ex:
-    st.error(f"An error occurred: {str(ex)}")
-
-# Display a link
-st.write("https://github.com/appuv")
+# GitHub link
+st.write("Check out the repo: [GitHub](https://github.com/appuv)")
