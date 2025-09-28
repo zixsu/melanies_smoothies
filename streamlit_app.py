@@ -1,19 +1,16 @@
-# streamlit_app.py
-
 import streamlit as st
 import requests
-from snowflake.snowpark import Session
 from snowflake.snowpark.functions import col
-import json
+from snowflake.snowpark.session import Session
 
-# Title & Intro
-st.title("🍓 Customize Your Smoothie! 🥤")
+# Title & intro
+st.title("🍺 Customize Your Smoothie! 🥤")
 st.write("Choose the fruits you want in your custom Smoothie!")
 
-# Name input
+# Get name on order
 name_on_order = st.text_input("Your name for the order:")
 if name_on_order:
-    st.write("Smoothie will be prepared for:", name_on_order)
+    st.write("The smoothie is ordered by:", name_on_order)
 
 # Load session configuration from Streamlit secrets
 @st.cache_resource
@@ -43,35 +40,26 @@ try:
         max_selections=5
     )
 
-    # Display info from Fruityvice for each selected fruit
-    if selected_fruits:
-        for fruit in selected_fruits:
-            try:
-                response = requests.get(f"https://fruityvice.com/api/fruit/{fruit}")
-                response.raise_for_status()
-                fruit_data = response.json()
-                st.write(f"**Nutritional info for {fruit.capitalize()}:**")
-                st.json(fruit_data)
-            except requests.exceptions.RequestException as e:
-                st.warning(f"Could not load data for {fruit}: {str(e)}")
-
-    # Button to submit order
+    # 🧃 Blend button to submit order
     if st.button("Blend My Smoothie!"):
         if selected_fruits and name_on_order:
             ingredients_string = ', '.join(selected_fruits)
-            insert_stmt = f"""
+
+            insert_sql = f"""
                 INSERT INTO smoothies.public.orders (ingredients, name_on_order)
                 VALUES ('{ingredients_string}', '{name_on_order}')
             """
-            session.sql(insert_stmt).collect()
+            session.sql(insert_sql).collect()
+
             st.success(f"Smoothie for **{name_on_order}** is ordered! ✅")
-        elif not name_on_order:
-            st.info("Please enter your name before submitting.")
+
         elif not selected_fruits:
-            st.info("Please select at least one fruit to create your smoothie.")
+            st.info("Please select at least one ingredient to see your smoothie!")
+        elif not name_on_order:
+            st.info("Please enter a name for the order before submitting!")
 
 except Exception as e:
-    st.error(f"An error occurred: {str(e)}")
+    st.error(f"An error occurred: {e}")
 
-# GitHub link
-st.write("Check out the repo: [GitHub](https://github.com/appuv)")
+# Footer
+st.write("Check out the repo: [GitHub](https://github.com/zixsu)")
