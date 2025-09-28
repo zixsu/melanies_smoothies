@@ -11,6 +11,10 @@ st.write("Choose the fruits you want in your custom Smoothie!")
 smoothiefroot_response = requests.get("https://my.smoothiefroot.com/api/fruit/watermelon")
 st.text(smoothiefroot_response.json())
 
+sf_df = pd.json_normalize(smoothiefroot_response.json())
+
+st.dataframe(sf_df)
+
 name_on_order = st.text_input("Your name for the order:")
 if name_on_order:
     st.write("The smoothie is ordered by:", name_on_order)
